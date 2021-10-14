@@ -1,4 +1,4 @@
 *.pyc
-**/dataset
+**/temp_ds
 **/__pycache__
 
