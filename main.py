@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import nibabel as nib
+from scipy.ndimage import gaussian_filter
 
 def plot_slice(prueba_img, test_mask_img, predictions_img):
     fig = plt.figure(figsize=(16, 16))
@@ -25,6 +26,9 @@ def plot_slice(prueba_img, test_mask_img, predictions_img):
     plt.show()
 
 
+#np.random.seed(1)
+tamano = 5
+intensidad = 1.3
 img_path = 'temp_ds'
 original = nib.load(os.path.join(img_path, 'T1.nii')).get_fdata()
 gm = nib.load(os.path.join(img_path, 'unet2D_predictions_GM.nii')).get_fdata()
@@ -41,16 +45,30 @@ print(wm_ind)
 
 # coger al azar un punto de wm, senalarlo y aumentarle el brillo a este y a la region 
 
-x = wm[:,:,24]
+x = np.copy(wm[:,:,24])
 #plot_slice(x, x, x)
 x_ind = np.argwhere(x==1) # Arreglo con los indices donde los pixeles pertenecen a la materia blanca
 
 point_ = x_ind[np.random.randint(0, x_ind.shape[0]),:] # Punto aleatorio de la materia blanca
-region = x[point_[0]-3:point_[0]+3, point_[1]-3:point_[1]+3]
-print(region.shape)
-region[:,:] = 255
-print(region.shape)
-original[point_[0]-3:point_[0]+3, point_[1]-3:point_[1]+3, 24] = region
-print(wm.shape)
+reg_wm_msk = x[point_[0]-tamano:point_[0]+tamano, point_[1]-tamano:point_[1]+tamano]
+reg_orig = np.copy(original[point_[0]-tamano:point_[0]+tamano, point_[1]-tamano:point_[1]+tamano, 24])
+print(reg_wm_msk)
 
-plot_slice(original[:,:,24], x, x)
+#reg_wm_msk[:,:] = np.amax(original)
+reg_fcd = gaussian_filter(reg_orig, sigma=1)*reg_wm_msk
+
+print(reg_orig)
+print(reg_wm_msk*reg_orig*intensidad)
+wm_intensity = np.where(reg_wm_msk*reg_orig*intensidad>0, reg_wm_msk*reg_orig*intensidad, reg_orig)
+print(wm_intensity)
+
+fcd_sim = np.copy(original)
+fcd_sim[point_[0]-tamano:point_[0]+tamano, point_[1]-tamano:point_[1]+tamano, 24] = wm_intensity#reg_orig*reg_wm_msk*intensidad#reg_fcd #np.copy(reg_wm_msk)
+print(np.amax(original))
+
+# filtro
+#
+
+plot_slice(original[:,:,24], fcd_sim[:,:,24], x)
+
+## Cargar una FLAIR
