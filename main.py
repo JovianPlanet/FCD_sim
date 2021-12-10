@@ -1,84 +1,54 @@
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 import nibabel as nib
-from scipy.ndimage import gaussian_filter
-
-def plot_slice(prueba_img, test_mask_img, predictions_img):
-    fig = plt.figure(figsize=(16, 16))
-    fig.subplots_adjust(hspace=1 ,wspace=1)
-
-    ax1 = fig.add_subplot(1, 3, 1)
-    #ax1.title.set_text('imagen')
-    ax1.axis("off")
-    ax1.imshow(prueba_img, cmap="gray")
-
-    ax2 = fig.add_subplot(1, 3, 2)
-    #ax2.title.set_text('mask')
-    ax2.axis("off")
-    ax2.imshow(test_mask_img, cmap="gray")
-
-    ax3 = fig.add_subplot(1, 3, 3)
-    #ax3.title.set_text('prediccion')
-    ax3.axis("off")
-    ax3.imshow(predictions_img, cmap="gray")
-
-    plt.show()
-
+from utils import generate_fcd, plot_slice, plt_fcd_bbox
+from matplotlib.patches import Rectangle
 
 #np.random.seed(1)
-tamano = 5
-intensidad = 1.3
+
+fcd_num = np.random.randint(1, 4) # Cantidad de malformaciones a simular en el volumen (aleatorio entre 1 y 4)
+print('Num FCDs = {}\n'.format(fcd_num))
+
 img_path = 'temp_ds'
-original = nib.load(os.path.join(img_path, 'T1.nii')).get_fdata()
-orig_flair = nib.load(os.path.join(img_path, 'T2_FLAIR.nii')).get_fdata()
-gm = nib.load(os.path.join(img_path, 'unet2D_predictions_GM.nii')).get_fdata() # Mascara de la materia gris
+#save_path = '/media/david/datos1/Coding/maestria/3_semestre/va/3ra_entrega/sim4_1.2.png'
+
+t1 = nib.load(os.path.join(img_path, 'T1.nii')).get_fdata()
+print('t1 dtype = {}\n'.format(t1.dtype))
+t2_flair = nib.load(os.path.join(img_path, 'T2_FLAIR.nii')).get_fdata()
+#gm = nib.load(os.path.join(img_path, 'unet2D_predictions_GM.nii')).get_fdata() # Mascara de la materia gris
 wm = nib.load(os.path.join(img_path, 'unet2D_predictions_WM.nii')).get_fdata() # Mascara de la materia blanca
 
-ug, gm_ind = np.unique(gm, return_index=True) # Devuelve los indices de los pixeles pertenecientes a materia gris
-uw, wm_ind = np.unique(wm, return_index=True) # Devuelve los indices de los pixeles pertenecientes a materia blanca
-
-#plot_slice(original[:,:,24], original[:,:,24]*gm[:,:,24], original[:,:,24]*wm[:,:,24])
-#plot_slice(original[:,:,24], np.where(gm[:,:,24]==1, original[:,:,24], 0), np.where(wm[:,:,24]==1, original[:,:,24], 0))
-
-# coger al azar un punto de wm, senalarlo y aumentarle el brillo a este y a la region 
-
-x = np.copy(wm[:,:,24]) # Un slice de materia blanca
-
+# seleccionar al azar un punto de wm, senalarlo y aumentarle el brillo a este y a la region 
+n_slice = np.random.randint(0, t1.shape[2])
+x = np.copy(wm[:,:,n_slice]) # Un slice de materia blanca
 x_ind = np.argwhere(x==1) # Arreglo con los indices donde los pixeles pertenecen a la materia blanca
+print('x_ind shape = {}\n'.format(x_ind.shape))
 
-point_ = x_ind[np.random.randint(0, x_ind.shape[0]),:] # Punto aleatorio de la materia blanca
+while x_ind.shape[0] == 0:
+    n_slice = np.random.randint(0, t1.shape[2])
+    x = np.copy(wm[:,:,n_slice]) # Un slice de materia blanca
+    x_ind = np.argwhere(x==1) # Arreglo con los indices donde los pixeles pertenecen a la materia blanca
 
-# Con base en l punto seleccionado se extrae una region de materia blanca (cuadro de area = 2tamano x 2tamano)
-reg_wm_msk = x[point_[0]-tamano:point_[0]+tamano, point_[1]-tamano:point_[1]+tamano] 
+patches = [1]
+fcd_t1, fcd_flair, patches[0] = generate_fcd(x, x_ind, t1, t2_flair, n_slice)
+for fcd in range(fcd_num - 1):
+    fcd_t1, fcd_flair, patch = generate_fcd(x, x_ind, fcd_t1, fcd_flair, n_slice)
+    patches.append(patch)
+    
+print('fcd_t1 main dtype = {}\n'.format(fcd_t1.dtype))
+print('fcd_flair main dtype = {}\n'.format(fcd_flair.dtype))
 
-# Region de la img original
-reg_orig = np.copy(original[point_[0]-tamano:point_[0]+tamano, point_[1]-tamano:point_[1]+tamano, 24])
-#print(reg_wm_msk)
+#t1_fcd_nii = nib.Nifti1Image(fcd_t1, nib.load(os.path.join(img_path, 'T1.nii')).affine)
+#nib.save(t1_fcd_nii, 't1-fcd.nii')
+plt_fcd_bbox(t1[:,:,n_slice], fcd_t1[:,:,n_slice], fcd_flair[:,:,n_slice], patches)
 
-reg_fcd = gaussian_filter(reg_orig, sigma=1)*reg_wm_msk # Region con filtro gaussiano
+# OJO: NO necesariamente todas las FCD estan en el mismo slice, se deben generar en puntos aleatorios del volumen
+# es decir, el slice debe ser aleatorio para cada FCD simulado
 
-print(np.mean(reg_orig))
-print(np.mean(np.copy(orig_flair[point_[0]-tamano:point_[0]+tamano, point_[1]-tamano:point_[1]+tamano, 24])))
-#print(reg_wm_msk*reg_orig*intensidad)
+## Revisar en la literatura las manifestaciones de FCD en MRI (especialmente aumento de k de materia blanca)
+#plot_slice(t1[:,:,24], np.where(gm[:,:,24]==1, t1[:,:,24], 0), np.where(wm[:,:,24]==1, t1[:,:,24], 0))
+#ug, gm_ind = np.unique(gm, return_index=True) # Devuelve los indices de los pixeles pertenecientes a materia gris
+#uw, wm_ind = np.unique(wm, return_index=True) # Devuelve los indices de los pixeles pertenecientes a materia blanca
 
-# Region con FCD simulada por aumento de la intensidad en la materia blanca
-wm_intensity = np.where(reg_wm_msk*reg_orig*intensidad>0, reg_wm_msk*reg_orig*intensidad, reg_orig) 
-#print(wm_intensity)
 
-fcd_sim = np.copy(original) # Copia del volumen original
-fcd_sim_flair = np.copy(orig_flair)
-
-# Sobre la region del volumen original se lleva la region con FCD simulada
-fcd_sim[point_[0]-tamano:point_[0]+tamano, point_[1]-tamano:point_[1]+tamano, 24] = wm_intensity#reg_orig*reg_wm_msk*intensidad#reg_fcd #np.copy(reg_wm_msk)
-#print(fcd_sim[point_[0]-tamano:point_[0]+tamano, point_[1]-tamano:point_[1]+tamano, 24])
-
-# Proyeccion de la region simulada sobre la secuencia FLAIR
-fcd_sim_flair[point_[0]-tamano:point_[0]+tamano, point_[1]-tamano:point_[1]+tamano, 24] = wm_intensity
-#print(fcd_sim_flair[point_[0]-tamano:point_[0]+tamano, point_[1]-tamano:point_[1]+tamano, 24])
-
-plot_slice(original[:,:,24], fcd_sim[:,:,24], fcd_sim_flair[:,:,24])
-
-## Cargar una FLAIR
-
-## Revisar en la literatura las manifestaciones de FCD en MRI (especialmente aumento de intensidad de materia blanca)
+# implementar un clasificador de prueba sin optimuzar par'ametros para probrar la sim

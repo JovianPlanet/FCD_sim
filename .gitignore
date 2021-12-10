@@ -1,4 +1,5 @@
 *.pyc
+*.nii
 **/temp_ds
 **/__pycache__
 
